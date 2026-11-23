@@ -1,0 +1,20 @@
+{
+  "slug": "joelauge",
+  "name": "Joel Augé",
+  "givenName": "Joel",
+  "familyName": "Augé",
+  "title": "Co-founder · Go-to-market",
+  "org": "KnowDrive",
+  "legalOrg": "Recourse Software Inc.",
+  "bio": "Built MouseHunt, one of the first Facebook games and still running two decades later. Now bringing KnowDrive, shared memory for AI agents, to market.",
+  "email": "joel@recoursellm.com",
+  "phone": "",
+  "linkedin": "https://www.linkedin.com/in/joelauge/",
+  "portrait": "joelauge.jpg",
+  "booking": {
+    "url": "https://calendar.google.com/calendar/appointments/schedules/AcZssZ0gf1kPAv3yWcLxJZsAnNlWdsy6bORUrgOAj4_p88FemB0vtVAiXtIcO2rGv6tEx-c1QDEpR6eP",
+    "calendar": "joel@recoursellm.com",
+    "frameHeight": 820,
+    "frameHeightNarrow": 1320
+  }
+}
