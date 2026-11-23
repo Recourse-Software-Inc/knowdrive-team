@@ -7,6 +7,8 @@
 //   /<slug>/meet/   the booking page: the person's Google Calendar appointment
 //                   schedule, embedded. This is the URL the QR encodes, so a
 //                   printed code keeps working if the schedule is replaced.
+//                   Until a person has a schedule (no booking.url) the same
+//                   page asks for a meeting by email instead.
 //
 // The output is plain static files with no build-time dependencies: the QR is
 // drawn by scripts/qr.mjs and inlined as SVG.
@@ -43,13 +45,20 @@ export function loadStaff(dir = join(ROOT, 'staff')) {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(p.email)) fail('"email" is not an address')
     if (p.phone && !/^\+[1-9]\d{6,14}$/.test(digits(p.phone))) fail('"phone" must be international format, e.g. "+1 416 555 0100"')
     if (p.linkedin && !/^https:\/\/[^\s"<>]+$/.test(p.linkedin)) fail('"linkedin" must be an https URL')
-    if (!/^https:\/\/[^\s"<>]+$/.test(p.booking?.url ?? '')) fail('"booking.url" must be an https URL')
+    if (p.booking?.url && !/^https:\/\/[^\s"<>]+$/.test(p.booking.url)) fail('"booking.url" must be an https URL')
     return { ...p, portraitBytes: readFileSync(join(dir, p.portrait)) }
   })
 }
 
 /** Public URLs. GitHub Pages redirects the slash-less form to the directory. */
 export const urls = (p) => ({ card: `${ORIGIN}/${p.slug}`, meet: `${ORIGIN}/${p.slug}/meet` })
+
+// With a Google Calendar appointment schedule, /meet books a time. Until a
+// person has one it asks for a meeting by email. The URL is the same either
+// way, so a QR code already handed out starts booking the day the link is added.
+export const books = (p) => Boolean(p.booking?.url)
+const verb = (p) => (books(p) ? 'Book' : 'Request')
+const lower = (p) => verb(p).toLowerCase()
 
 // --- vCard -------------------------------------------------------------------
 const vEsc = (s) => String(s).replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/([,;])/g, '\\$1')
@@ -79,7 +88,7 @@ export function vcard(p) {
     ...(p.phone ? [`TEL;TYPE=CELL,VOICE:${digits(p.phone)}`] : []),
     `URL:${card}`,
     ...(p.linkedin ? [`item1.URL:${p.linkedin}`, 'item1.X-ABLabel:LinkedIn'] : []),
-    `NOTE:${vEsc(`Book a meeting: ${meet}`)}`,
+    `NOTE:${vEsc(`${verb(p)} a meeting: ${meet}`)}`,
     `PHOTO;ENCODING=b;TYPE=JPEG:${p.portraitBytes.toString('base64')}`,
     'END:VCARD',
   ].map(fold).join('\r\n') + '\r\n'
@@ -133,12 +142,16 @@ ${body}
 `
 }
 
+// "in/joelauge": the profile path, decoded, without LinkedIn's numeric suffix.
+const linkedinLabel = (p) =>
+  decodeURIComponent(p.linkedin.replace(/^https:\/\/(www\.)?linkedin\.com\//, '').replace(/\/$/, '')).replace(/-(?=[0-9a-f]*\d)[0-9a-f]{8,}$/, '')
+
 const foot = `<p class="kds-foot"><a href="${PRODUCT.url}">${PRODUCT.name}</a> · ${PRODUCT.tagline}</p>`
 
 function qrMarkup(p) {
   const qr = qrEncode(urls(p).meet, { ecl: 'M' })
   const dim = qr.size + QR_QUIET * 2
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${dim} ${dim}" shape-rendering="crispEdges" role="img" aria-label="${esc(`QR code: book a meeting with ${p.name}`)}"><rect width="${dim}" height="${dim}" fill="#fff"/><path fill="#15151f" d="${qrSvgPath(qr, QR_QUIET)}"/></svg>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${dim} ${dim}" shape-rendering="crispEdges" role="img" aria-label="${esc(`QR code: ${lower(p)} a meeting with ${p.name}`)}"><rect width="${dim}" height="${dim}" fill="#fff"/><path fill="#15151f" d="${qrSvgPath(qr, QR_QUIET)}"/></svg>`
 }
 
 export function cardPage(p) {
@@ -150,7 +163,7 @@ export function cardPage(p) {
   const rows = [
     row(`mailto:${p.email}`, icon('mail'), 'Email', p.email),
     ...(p.phone ? [row(`tel:${digits(p.phone)}`, icon('phone'), 'Phone', p.phone)] : []),
-    ...(p.linkedin ? [row(p.linkedin, LINKEDIN_ICON, 'LinkedIn', p.linkedin.replace(/^https:\/\/(www\.)?linkedin\.com\//, '').replace(/\/$/, ''), ext)] : []),
+    ...(p.linkedin ? [row(p.linkedin, LINKEDIN_ICON, 'LinkedIn', linkedinLabel(p), ext)] : []),
     row(PRODUCT.url, icon('globe'), 'Website', new URL(PRODUCT.url).host),
   ]
   const jsonLd = {
@@ -175,23 +188,23 @@ export function cardPage(p) {
     `<p class="kds-org">${esc(p.legalOrg ? `${p.org} · ${p.legalOrg}` : p.org)}</p>`,
     ...(p.bio ? [`<p class="kds-bio">${esc(p.bio)}</p>`] : []),
     `<div class="kds-actions">`,
-    `<a class="kds-btn kds-btn-primary" href="meet/">${icon('calendar')}Book a meeting</a>`,
+    `<a class="kds-btn kds-btn-primary" href="meet/">${icon('calendar')}${verb(p)} a meeting</a>`,
     `<a class="kds-btn" href="${esc(p.slug)}.vcf" download="${esc(vcfName)}">${icon('save')}Save contact</a>`,
     `</div>`,
     `<ul class="kds-list">`,
     ...rows,
     `</ul>`,
     `<section class="kds-qr" aria-labelledby="kds-qr-h">`,
-    `<h2 id="kds-qr-h">Scan to book a meeting</h2>`,
+    `<h2 id="kds-qr-h">Scan to ${lower(p)} a meeting</h2>`,
     `<button type="button" class="kds-qr-tile" id="kds-qr-open" aria-label="Enlarge the QR code">${qr}</button>`,
-    `<p>Point a phone camera at the code to pick a time on ${first}'s calendar.</p>`,
+    `<p>Point a phone camera at the code to ${books(p) ? `pick a time on ${first}'s calendar` : `ask ${first} for a time`}.</p>`,
     `</section>`,
     `</div>`,
     `</article>`,
     foot,
-    `<dialog class="kds-dialog" id="kds-qr-dialog" aria-label="QR code: book a meeting with ${esc(p.name)}">`,
+    `<dialog class="kds-dialog" id="kds-qr-dialog" aria-label="QR code: ${lower(p)} a meeting with ${esc(p.name)}">`,
     qr,
-    `<b>Book a meeting with ${first}</b><span>Scan with a phone camera</span>`,
+    `<b>${verb(p)} a meeting with ${first}</b><span>Scan with a phone camera</span>`,
     `<button type="button">Close</button>`,
     `</dialog>`,
     `</main>`,
@@ -201,7 +214,7 @@ export function cardPage(p) {
   ].join('\n')
   return page({
     title: `${p.name} · ${p.org}`,
-    description: `${plainTitle(p)} at ${p.org}. Contact details and a link to book a meeting.`,
+    description: `${plainTitle(p)} at ${p.org}. Contact details and a link to ${lower(p)} a meeting.`,
     canonical: `${urls(p).card}/`,
     image: `${urls(p).card}/portrait.jpg`,
     up: '../',
@@ -211,32 +224,49 @@ export function cardPage(p) {
 
 export function meetPage(p) {
   const first = esc(p.givenName)
-  const url = p.booking.url
-  const embed = url + (url.includes('?') ? '&' : '?') + 'gv=true'
-  const narrow = Number(p.booking.frameHeightNarrow) || 1320
-  const wide = Number(p.booking.frameHeight) || 820
-  const body = [
+  const narrow = books(p) ? '' : ' kds-narrow'
+  const open = [
     `<main class="kds">`,
-    `<nav class="kds-top"><a class="kds-back" href="../">${icon('back', 18)}${first}'s contact card</a></nav>`,
-    `<article class="kds-meet">`,
+    `<nav class="kds-top${narrow}"><a class="kds-back" href="../">${icon('back', 18)}${first}'s contact card</a></nav>`,
+    `<article class="kds-meet${narrow}">`,
     `<header class="kds-who">`,
     `<img src="../portrait.jpg" alt="" width="52" height="52">`,
-    `<div><h1>Book a meeting with ${first}</h1><p>${esc(p.title)} · ${esc(p.org)}</p></div>`,
+    `<div><h1>${verb(p)} a meeting with ${first}</h1><p>${esc(p.title)} · ${esc(p.org)}</p></div>`,
     `</header>`,
-    `<p class="kds-lede">Pick a time that works for you. It goes straight onto ${first}'s calendar, and Google Calendar emails you the invite.</p>`,
-    `<div class="kds-frame" style="--kds-fh:${narrow}px;--kds-fh-wide:${wide}px"><iframe src="${esc(embed)}" title="Pick a time with ${esc(p.name)}" loading="eager" referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`,
-    `<p class="kds-alt">Calendar not loading? <a href="${esc(url)}" target="_blank" rel="noopener">Open the booking page</a>, or email <a href="mailto:${esc(p.email)}?subject=${encodeURIComponent('Meeting request')}">${esc(p.email)}</a>.</p>`,
-    `</article>`,
-    foot,
-    `</main>`,
-  ].join('\n')
+  ]
+  const close = [`</article>`, foot, `</main>`]
+  let middle
+  if (books(p)) {
+    const url = p.booking.url
+    const embed = url + (url.includes('?') ? '&' : '?') + 'gv=true'
+    const tall = Number(p.booking.frameHeightNarrow) || 1320
+    const wide = Number(p.booking.frameHeight) || 820
+    middle = [
+      `<p class="kds-lede">Pick a time that works for you. It goes straight onto ${first}'s calendar, and Google Calendar emails you the invite.</p>`,
+      `<div class="kds-frame" style="--kds-fh:${tall}px;--kds-fh-wide:${wide}px"><iframe src="${esc(embed)}" title="Pick a time with ${esc(p.name)}" loading="eager" referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`,
+      `<p class="kds-alt">Calendar not loading? <a href="${esc(url)}" target="_blank" rel="noopener">Open the booking page</a>, or email <a href="mailto:${esc(p.email)}?subject=${encodeURIComponent('Meeting request')}">${esc(p.email)}</a>.</p>`,
+    ]
+  } else {
+    const note = `Hi ${p.givenName},\r\n\r\nI'd like to set up a meeting. A few times that work for me:\r\n\r\n- \r\n- \r\n- \r\n`
+    const mail = `mailto:${p.email}?subject=${encodeURIComponent('Meeting request')}&body=${encodeURIComponent(note)}`
+    middle = [
+      `<p class="kds-lede">Send ${first} a short note with a few times that work for you, and you'll get a reply confirming one.</p>`,
+      `<div class="kds-actions">`,
+      `<a class="kds-btn kds-btn-primary" href="${esc(mail)}">${icon('mail')}Email ${first}</a>`,
+      ...(p.linkedin ? [`<a class="kds-btn" href="${esc(p.linkedin)}" target="_blank" rel="noopener">${LINKEDIN_ICON}Message on LinkedIn</a>`] : []),
+      `</div>`,
+      `<p class="kds-alt">Or write to <a href="mailto:${esc(p.email)}">${esc(p.email)}</a>.</p>`,
+    ]
+  }
   return page({
-    title: `Book a meeting with ${p.name}`,
-    description: `Pick a time on ${p.givenName}'s calendar. ${plainTitle(p)} at ${p.org}.`,
+    title: `${verb(p)} a meeting with ${p.name}`,
+    description: books(p)
+      ? `Pick a time on ${p.givenName}'s calendar. ${plainTitle(p)} at ${p.org}.`
+      : `Ask ${p.givenName} for a meeting. ${plainTitle(p)} at ${p.org}.`,
     canonical: `${urls(p).meet}/`,
     image: `${urls(p).card}/portrait.jpg`,
     up: '../../',
-    body,
+    body: [...open, ...middle, ...close].join('\n'),
   })
 }
 

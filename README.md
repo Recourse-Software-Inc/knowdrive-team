@@ -8,7 +8,8 @@ Each person gets two pages:
 - `team.knowdrive.ai/<slug>` is the card: portrait, role, contact details, a
   "Save contact" vCard, and a QR code.
 - `team.knowdrive.ai/<slug>/meet` is the booking page: their Google Calendar
-  appointment schedule, embedded. The QR code on the card opens this page.
+  appointment schedule, embedded (or an email request, until they have one).
+  The QR code on the card opens this page.
 
 ## How it is put together
 
@@ -39,7 +40,9 @@ Edit `staff/<slug>.json`, rebuild, commit and push. Fields:
 - `booking.url`: the booking-page link of a Google Calendar appointment
   schedule (Google Calendar, Create, Appointment schedule, then "Open booking
   page"). Replacing the schedule only means changing this link; the QR code
-  stays the same.
+  stays the same. Leave it empty for someone who has no schedule yet: their
+  `/meet` page then asks for a meeting by email, and starts booking as soon
+  as the link is filled in.
 
 ## Adding a person
 

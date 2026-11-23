@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { qrEncode, qrSvgPath, qrPng, formatInfo, rsRemainder, dataCodewords } from './qr.mjs'
-import { loadStaff, outputs, vcard, cardPage, meetPage, urls, DOMAIN } from './build.mjs'
+import { loadStaff, outputs, vcard, cardPage, meetPage, urls, books, DOMAIN } from './build.mjs'
 
 // --- QR encoder: vectors from ISO/IEC 18004 ----------------------------------
 test('qr: format information matches the spec example (level M, mask 5)', () => {
@@ -99,7 +99,7 @@ test('site: the QR, the card button and the vCard all lead to the booking page',
     const vcf = vcard(p)
     assert.match(vcf, /^BEGIN:VCARD\r\nVERSION:3\.0\r\n/)
     assert.ok(vcf.includes(`EMAIL;TYPE=INTERNET,WORK:${p.email}\r\n`))
-    assert.ok(vcf.includes(`NOTE:Book a meeting: https://${DOMAIN}/${p.slug}/meet\r\n`))
+    assert.ok(vcf.includes(`NOTE:${books(p) ? 'Book' : 'Request'} a meeting: https://${DOMAIN}/${p.slug}/meet\r\n`))
     assert.ok(vcf.endsWith('END:VCARD\r\n'))
     for (const line of vcf.split('\r\n')) assert.ok(Buffer.byteLength(line) <= 75, 'vCard line folding')
     // Unfolding the photo gives back the portrait, byte for byte.
@@ -108,11 +108,41 @@ test('site: the QR, the card button and the vCard all lead to the booking page',
   }
 })
 
-test('site: the booking page embeds the schedule and links out as a fallback', () => {
+// A person with a Google Calendar schedule gets it embedded; a person without
+// one gets an email request on the same URL. Both are checked on the same
+// person, so the test does not depend on who currently has a schedule.
+test('site: /meet books with a schedule and asks by email without one', () => {
+  const schedule = 'https://calendar.google.com/calendar/appointments/schedules/EXAMPLE'
+  for (const p of staff) {
+    const booking = meetPage({ ...p, booking: { url: schedule } })
+    assert.ok(booking.includes(`<iframe src="${schedule}?gv=true"`))
+    assert.ok(booking.includes(`<a href="${schedule}" target="_blank" rel="noopener">`))
+    assert.ok(booking.includes(`<h1>Book a meeting with ${p.givenName}</h1>`))
+    assert.ok(cardPage({ ...p, booking: { url: schedule } }).includes('Book a meeting</a>'))
+
+    const request = meetPage({ ...p, booking: { url: '' } })
+    assert.ok(!request.includes('<iframe'))
+    assert.ok(request.includes(`<h1>Request a meeting with ${p.givenName}</h1>`))
+    assert.ok(request.includes(`href="mailto:${p.email}?subject=Meeting%20request&amp;body=Hi%20${p.givenName}`))
+    assert.ok(cardPage({ ...p, booking: { url: '' } }).includes('Request a meeting</a>'))
+
+    for (const html of [booking, request]) assert.ok(html.includes('<a class="kds-back" href="../">'))
+  }
+})
+
+test('site: the pages as built match each person\'s booking setting', () => {
   for (const p of staff) {
     const html = meetPage(p)
-    assert.ok(html.includes(`<iframe src="${p.booking.url}?gv=true"`))
-    assert.ok(html.includes(`<a href="${p.booking.url}" target="_blank" rel="noopener">`))
-    assert.ok(html.includes('<a class="kds-back" href="../">'))
+    assert.equal(html.includes('<iframe'), books(p))
+    if (books(p)) assert.ok(html.includes(`<iframe src="${p.booking.url}?gv=true"`))
   }
+})
+
+test('site: the LinkedIn row shows the decoded profile path without the numeric suffix', () => {
+  const p = staff[0]
+  const row = (linkedin) => cardPage({ ...p, linkedin }).match(/<small>LinkedIn<\/small><b>([^<]*)<\/b>/)[1]
+  assert.equal(row('https://www.linkedin.com/in/joelauge/'), 'in/joelauge')
+  assert.equal(row('https://www.linkedin.com/in/pierre-aug%C3%A9-820740376/'), 'in/pierre-augé')
+  assert.equal(row('https://www.linkedin.com/in/raymond-auge/'), 'in/raymond-auge')
+  assert.equal(row('https://www.linkedin.com/in/ana-facade/'), 'in/ana-facade')
 })

@@ -1,0 +1,17 @@
+{
+  "slug": "pierreauge",
+  "name": "Pierre Augé",
+  "givenName": "Pierre",
+  "familyName": "Augé",
+  "title": "Co-founder · Architecture",
+  "org": "KnowDrive",
+  "legalOrg": "Recourse Software Inc.",
+  "bio": "Designed the orchestration and token-optimization layer end to end. Military constrained-systems architect; patented and deployed systems alongside Canada’s DND/CANSOF.",
+  "email": "pierre@recoursellm.com",
+  "phone": "",
+  "linkedin": "https://www.linkedin.com/in/pierre-aug%C3%A9-820740376/",
+  "portrait": "pierreauge.jpg",
+  "booking": {
+    "url": ""
+  }
+}
